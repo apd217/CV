@@ -27,7 +27,7 @@ knitr::opts_chunk$set(warning =  FALSE) #hide package warnings
 ```
 
 # Today's Goal
-A deeper dive in the setting the parameters.
+A deeper dive in the setting the parameters that we need for Cross Validation.
 
 ## Simulation 
 Create a set of data with 4 completely uncorrelated predictors each at $r = .2$ with $Y$, N = 200. This will give an $R^2 = .16$. This simulation has no noise and if we run the model will all the data we would get these exact values.    

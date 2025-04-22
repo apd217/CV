@@ -98,7 +98,8 @@ if (window.hljs) {
 
 <div id="cross-validation" class="section level1">
 <h1>Cross-Validation</h1>
-<p>We previously explored the idea of what happens when you split a data set into a training versus test data set (<em>Hold out</em>). By calculating the Root Mean Squared Error (<span class="math inline">\(RMSE\)</span>), we assessed how well models fit the training data and generalize to the test data. This allowed us to identify overfitting or underfitting tendencies in the models..</p>
+<p>We previously explored the idea of what happens when you split a data set into a training versus test data set (<em>Hold out</em>). By calculating the Root Mean Squared Error (<span class="math inline">\(RMSE\)</span>), we assessed how well models fit the training data and generalize to the test data.</p>
+<p>This allowed us to identify overfitting or underfitting tendencies in the models.</p>
 <p><span class="math display">\[RMSE = \sqrt{\frac{\sum_{i=1}^n (Predicted_i - Actual_i)^2}{n}}\]</span></p>
 <p>If we had infinite resources, we could collect a sufficiently large dataset such that splitting into training and test sets (e.g., 50/50) would yield stable results. However, real-world datasets are often small, and splitting data into training and test sets introduces instability and variability. Today, we’ll explore resampling techniques that address these limitations, enabling us to work with training and test data in a more robust way.</p>
 <p>The key principle is to maximize the data used for training, as a larger training set improves the model’s ability to generalize. However, the specific resampling technique depends on the type of data and study design. For simplicity, we’ll focus on single-outcome datasets with multiple predictors. Advanced techniques are needed for time series, hierarchical, or repeated-measures data.</p>
