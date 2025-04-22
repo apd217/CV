@@ -1,0 +1,330 @@
+---
+title: "Cross Validation I"
+subtitle: "Methods to Minimize Error"
+author: "Alexander Demos"
+date: "`r Sys.Date()`"
+output:
+  tufte::tufte_html: default
+  tufte::tufte_handout:
+    citation_package: natbib
+    latex_engine: xelatex
+  tufte::tufte_book:
+    citation_package: natbib
+    latex_engine: xelatex
+bibliography: skeleton.bib
+link-citations: yes
+---
+
+```{r setup, include=FALSE}
+library(tufte)
+# invalidate cache when the tufte version changes
+knitr::opts_chunk$set(tidy = FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(message = FALSE) #hide messages 
+knitr::opts_chunk$set(warning =  FALSE) #hide package warnings 
+```
+
+# Cross-Validation
+
+We previously explored the idea of what happens when you split a data set into a training versus test data set (*Hold out*). By calculating the Root Mean Squared Error ($RMSE$),  we assessed how well models fit the training data and generalize to the test data. This allowed us to identify overfitting or underfitting tendencies in the models.. 
+
+$$RMSE = \sqrt{\frac{\sum_{i=1}^n (Predicted_i - Actual_i)^2}{n}}$$
+
+If we had infinite resources, we could collect a sufficiently large dataset such that splitting into training and test sets (e.g., 50/50) would yield stable results. However, real-world datasets are often small, and splitting data into training and test sets introduces instability and variability. Today, we’ll explore resampling techniques that address these limitations, enabling us to work with training and test data in a more robust way.
+
+The key principle is to maximize the data used for training, as a larger training set improves the model's ability to generalize. However, the specific resampling technique depends on the type of data and study design. For simplicity, we’ll focus on single-outcome datasets with multiple predictors. Advanced techniques are needed for time series, hierarchical, or repeated-measures data.
+
+
+## Validation Set Approach 
+
+This is the technique we’ve already explored, where we hold out a portion of the data (e.g., 50%) as the test set. While simple and intuitive, this approach has significant limitations:
+
+
+The first is that this approach is **highly variable**, and that every time you run it you're going to get a different answer based on the initial split that you've created. Quite a bit of the result rides on how the data were split. In particular, in smaller datasets you are decreasing the size of the training data to create data for testing. Thus, your training model will not have the best possible predictive power, and every time you try to fit it to the test data you will get a high degree of variance in the quality of the fit. 
+
+- *High Variability*: Each split creates a unique training and test set, leading to variability in the results. This is particularly problematic with small datasets, where reducing the training size weakens the model’s predictive power.
+
+- *Imbalanced Predictors*: By chance, a predictor may have low or unbalanced variance between the training and test sets, reducing the validity of the results.
+
+- *Optimal Split Size*: Deciding how much data to allocate to the test set is challenging. Larger test sets reduce the training size, while smaller test sets may lack sufficient data for robust evaluation. Below, we’ll compare a 50% versus 80% split.
+
+
+## K-Fold Cross Validation 
+
+K-Fold Cross-Validation is a resampling technique that splits the data into $K$ equal folds, trains the model on $K−1$ folds, tests it on the remaining fold, and averages the results to estimate the model's performance: 
+
+1. Split the data into $K$ folds of approximately equal size.
+2. Use $K-1$ folds as the training set and the remaining fold as the test set.
+3. Train the model on the training set and calculate the error (such as $RMSE$) on the test set.
+4. Repeat this process $K$ times, using a different fold as the test set each time.
+5. The final error term is the average of K times you draw the samples
+
+
+$$K\:Fold\:CV = \frac{1}{K}\sum^K_{i=1} RSME_i$$
+
+
+Common values for $K$ are 5 or 10. This approach reduces the variability associated with the validation set method and ensures all data points are used for both training and validation. The result is an estimate of the *out-of-sample* prediction error with lower variance.
+
+-**Basically, you are going to use all the data at to eventually fit a model, and you are removing the problem of the high variance caused by having 1 training set that is a unique combination of one possible drawing.** 
+
+
+*Stratified Sampling*
+
+For unbalanced datasets or small sample sizes, stratified sampling can be applied to ensure each fold represents the distribution of outcome and predictor variables. For well-balanced datasets, this step is unnecessary.  
+
+## Repeated K-Fold Cross Validation
+
+This method builds on K-Fold Cross-Validation by repeating the process multiple times with shuffled data. It’s similar to bootstrapping the folds and is particularly useful when you need to reduce variability further. However, repeated K-Fold is computationally more expensive and often unnecessary for larger datasets.
+
+
+## Leave one out cross-validation (LOOCV)
+LOOCV is the most unbiased resampling method but also the most computationally expensive. Here’s how it works:
+
+1. Remove one data point from the dataset, using the remaining $N−1$ data points for training.
+2. Predict the removed data point using the trained model.
+3. Repeat this process for every data point, calculating the 
+error (such as RMSE) for each.
+4. The final error is the average of all errors:
+
+$$LOOCV = \frac{1}{N}\sum^N_{i=1} RSME_i$$
+
+Every data point is used for both training and testing, eliminating variability in the test error. However, LOOCV does not always produce the lowest error and can be infeasible for large datasets or computationally intensive models.
+
+Conceptually, what we're going to do here is remove **one sample** from the data (training data = N-1 samples) and fit the model. Then you use the trained model to predict the one held out test data point. Then you going to repeat this process for every single data point in the data set. Then you average the RMSE (or whatever metric you want). 
+
+*Advantages:*
+
+- Provides the most stable estimate of error with zero variance.
+- Works well for small datasets, where K-Fold may not provide enough training data.
+- Eliminates concerns about predictor variance in data splits.
+
+*Disadvantages:*
+
+- Computationally expensive, especially with large datasets or complex models.
+- May not minimize error for test data in all scenarios.
+
+## Example Data 
+The relationship between age and happiness (that I simulated a last week).   
+
+```{r, echo=FALSE}
+set.seed(42)
+library(splines)
+n <- 200
+ID<-1:n
+# Uniform distribution of Ages 
+X <- runif(n, 18, 80)
+Xc<-scale(X,scale=F)
+# Our equation to  create Y
+slopes=c(400,100,-100,55,-250)
+degrees=length(slopes)
+s.m<-matrix(slopes,1,5)
+X.Spl=matrix(bs(Xc,degrees)[,],n,degrees)
+Y = s.m%*%t(X.Spl)+500+rnorm(n, sd=50)
+Y=as.numeric(Y)
+Happy.Data<-data.frame(Age=X,Happiness=Y/100)
+```
+
+```{r echo=FALSE, fig-margin, fig.margin = TRUE, fig.cap = "Age by Happiness", fig.width=3.5, fig.height=3.5, cache=TRUE, message=FALSE}
+library(ggpubr) #graph data
+ggscatter(Happy.Data, x = "Age", y = "Happiness",
+   #add = "loess",  # Add loess
+   add.params = list(color = "blue", fill = "lightblue"), # Customize reg. line
+   conf.int = TRUE, # Add confidence interval
+   cor.coef = FALSE, # Add correlation coefficient. see ?stat_cor
+   size = 1 # Size of dots
+   )
+```
+
+## `caret` for Cross-Validating
+
+*C*lassification *A*nd *RE*gression *T*raining (caret)
+
+- Data splitting & pre-processing
+- Feature selection
+- model tuning 
+- variable importance estimation
+
+We will use this package for most things.  There is a tidyverse version as well, but this has been around for 20+ years. 
+
+## Validation Set
+
+Simple Splitting Based on the Outcome.  
+
+```{r}
+library(tidyverse)
+library(caret)
+
+set.seed(42)
+Happy.Data.Train <- Happy.Data$Happiness %>%
+  createDataPartition(p = 0.5, list = FALSE)
+
+# Select rows that were selected
+train.data.VD  <- Happy.Data[Happy.Data.Train, ]
+# selects rows that were anti-selected
+test.data.VD <- Happy.Data[-Happy.Data.Train, ]
+```
+
+Build our model and predict the fit on the test data. Note, we can also look at MAE, which can be better than RMSE if and when we have more predictors than outcomes.  
+
+$$MAE = \frac{1}{N}{\sum_{i=1}^n|Predicted_i - Actual_i|}$$
+
+```{r}
+# Build the model
+model <- lm(Happiness ~poly(Age, 5), data = train.data.VD)
+# Make predictions and compute the RMSE 
+predict.train <- model %>% predict(train.data.VD)
+predict.test <- model %>% predict(test.data.VD)
+
+Validation.Set.Train<-data.frame(R2.train = R2(predict.train, train.data.VD$Happiness),
+            RMSE.train = RMSE(predict.train, train.data.VD$Happiness),
+            MAE.train = MAE(predict.train, train.data.VD$Happiness))
+
+Validation.Set.Test<-data.frame(R2.test = R2(predict.test, test.data.VD$Happiness),
+            RMSE.test = RMSE(predict.test, test.data.VD$Happiness),
+            MAE.test = MAE(predict.test, test.data.VD$Happiness))
+
+knitr::kable(round(Validation.Set.Train,3))
+knitr::kable(round(Validation.Set.Test,3))
+```
+
+## K-Fold CV
+
+Here we Set a training module using a particular method and we set the K number, which will do it 10. Where then going to feed a training model and set the method of analysis.
+
+```{r}
+# Define training control
+set.seed(42) 
+train.control <- trainControl(method = "cv", number = 10)
+# Train the model
+model.caret <- train(Happiness ~ poly(Age,5), data=Happy.Data, method = "lm",
+               trControl = train.control)
+# Summarize the results
+model.caret
+```
+
+We can examine the fit of each model (a total of 10 fits)
+
+```{r}
+model.caret$resample
+```
+
+We can plot the distributions.
+
+```{r}
+
+Long.fits.CV10<-model.caret$resample %>% pivot_longer(cols = c(RMSE:MAE),
+                                      names_to = "Metric",          
+                                      values_to="Fit")
+
+ggplot(data= Long.fits.CV10, aes(x=Fit)) +
+  facet_grid(.~Metric, scales = "free_x") + 
+  geom_histogram() +
+  theme_bw() +
+  ggtitle("10-fold CV")
+```
+We can also calculate the mean/variance of these **out-of-sample** errors. 
+
+```{r}
+Summary.CV10<-Long.fits.CV10 %>% group_by(Metric) %>%
+  summarise(n=n(),
+            M=mean(Fit), 
+            SD =sd(Fit))
+knitr::kable(Summary.CV10, digits=3)
+```
+
+Lucky, caret does all this for us!
+
+```{r}
+model.caret$results
+```
+
+You would report these numbers with your regression model as metric of fit. If the histograms are wide (and SD is wide), you know you have a problem. 
+
+We can also extract the model parameters from ALL the data fit (not best fit). So this would be like doing: `lm(Happiness ~ poly(Age,5), data=Happy.Data)`.
+
+```{r}
+summary(model.caret)
+```
+
+
+## Repeated 10-Fold CV
+We repeat the 10-fold, 10 times. 
+
+```{r}
+set.seed(42)
+train.control <- trainControl(method = "repeatedcv",
+                              number = 10, repeats = 25)
+# Train the model
+model.R <- train(Happiness ~ poly(Age,5), data=Happy.Data, method = "lm",
+               trControl = train.control)
+# Summarize the results
+model.R$results
+```
+
+We can examine the fit of each model (a total of 250 fits)
+
+```{r}
+head(model.R$resample)
+```
+
+We can plot the distributions.
+
+```{r}
+Long.fits.RCV10<-model.R$resample %>% pivot_longer(cols = c(RMSE:MAE),
+                                      names_to = "Metric",          
+                                      values_to="Fit")
+
+ggplot(data= Long.fits.RCV10, aes(x=Fit)) +
+  facet_grid(.~Metric, scales = "free_x") + 
+  geom_histogram() +
+  theme_bw() +
+  ggtitle("10-fold x 10 CV")
+```
+We can also calculate the mean/variance of these out-of-sample errors. 
+
+```{r}
+Summary.RCV10<-Long.fits.RCV10 %>% group_by(Metric) %>%
+  summarise(n=n(),
+            M=mean(Fit), 
+            SD =sd(Fit))
+knitr::kable(Summary.RCV10, digits=3)
+```
+
+
+## LOOCV
+
+Leave one out cross-validation
+
+```{r}
+set.seed(42)
+# Define training control
+train.control <- trainControl(method = "LOOCV")
+# Train the model
+model.LOOCV <- train(Happiness ~ poly(Age,5), data=Happy.Data, method = "lm",
+               trControl = train.control)
+# Summarize the results
+model.LOOCV$results
+```
+
+There will be no vairiance on the fits.  
+
+```{r}
+model.LOOCV$resampled
+```
+
+## Comparing all three Methods
+Here I ran a simulation of each of the methods repeatedly (N=100 for the Validation set, N = 50 for 10-Fold).  What's important to pay attention is the variance in the RSME from the approaches. 
+
+![Simulation](summaryplot.png)
+
+## Bias-Variance Trade-Off for k-Fold Cross-Validation
+
+"CV is that it often gives more accurate estimates of the test error rate than does LOOCV." Basically, in effect, averaging over less correlated samples when you use K fold validation and you can get better test error rates.  LOOCV on the other hand, is often averaging over many more trials which are highly correlated (since every training set is virtually identical except for one data point). LOOCV will, however, outperform K fold when the sample size is small.  In the example I provided were using linear regression, the results will be virtually identical.   
+
+
+# References 
+
+```{r bib, include=FALSE}
+# create a bib file for the R packages used in this document
+knitr::write_bib(c('base', 'rmarkdown','dplyr','ggpubr','ggplot2','caret','splines'), file = 'skeleton.bib')
+```

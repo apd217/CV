@@ -1,0 +1,318 @@
+---
+title: "Cross Validation II"
+subtitle: "Methods to Minimize Error"
+author: "Alexander Demos"
+date: "`r Sys.Date()`"
+output:
+  tufte::tufte_html: default
+  tufte::tufte_handout:
+    citation_package: natbib
+    latex_engine: xelatex
+  tufte::tufte_book:
+    citation_package: natbib
+    latex_engine: xelatex
+bibliography: skeleton.bib
+link-citations: yes
+---
+
+```{r setup, include=FALSE}
+library(tufte)
+library(tidyverse)
+library(knitr)
+# invalidate cache when the tufte version changes
+knitr::opts_chunk$set(tidy = FALSE, cache.extra = packageVersion('tufte'))
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(message = FALSE) #hide messages 
+knitr::opts_chunk$set(warning =  FALSE) #hide package warnings 
+```
+
+# Today's Goal
+A deeper dive in the setting the parameters.
+
+## Simulation 
+Create a set of data with 4 completely uncorrelated predictors each at $r = .2$ with $Y$, N = 200. This will give an $R^2 = .16$. This simulation has no noise and if we run the model will all the data we would get these exact values.    
+
+```{r}
+library(caret)
+library(MASS) #create data
+
+N=200
+X1Y =.2; X2Y =.2; X3Y =.2; X4Y =.2
+X1X2= 0; X1X3= 0; X1X4= 0
+X2X3= 0; X2X4= 0
+X3X4= 0;
+
+Means<- c(5,0,0,0,0) #set the means of X and Y variables
+CovMatrix        <- matrix(c(1, X1Y,  X2Y, X3Y, X4Y,
+                            X1Y,1   ,X1X2,X1X3,X1X4,
+                            X2Y,X1X2,1,   X2X3,X2X4,
+                            X3Y,X1X3,X2X3,1,   X3X4,
+                            X4Y,X1X4,X2X4,X3X4   ,1),5,5) # creates the covariate matrix 
+set.seed(42)
+CorrDataT<-mvrnorm(n=N, mu=Means,Sigma=CovMatrix, empirical=TRUE)
+#Convert them to a "Data.Frame" & add our labels to the vectors we created
+AcurracyExample<-as.data.frame(CorrDataT)
+colnames(AcurracyExample) <- c("DV","IV1","IV2","IV3","IV4")
+```
+
+```{r, echo=FALSE}
+TrueModel<-lm(DV~(IV1)+(IV2)+(IV3)+(IV4), data=AcurracyExample)
+TRUE.RMSE<-RMSE(predict(TrueModel),AcurracyExample$DV)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+library(texreg)
+texreg(TrueModel,caption="Simulated Perfect Data",single.row = TRUE,include.rmse = TRUE, digits=4)
+```
+
+
+# K-Fold CV
+
+Here we set the K number (5,10,20,40) and compare the results.  We will also `preProcess` the data on the fly. We can `center`, `scale` (defaults), remove near zero predictors (`nzv`). It says it can remove highly correlated predictors `corr`, but I cannot get it work. It has a set of transforms as well, `BoxCox`,`expoTrans` and a few others. It says it can condense the predicts on the fly, e.g., `pca`,`ica`. Impute missing values and a few other things. My suggestion is don't trust without checking to make sure these make sense and are working as stated.  
+
+```{r}
+# Define training control
+train.control.CV5 <- trainControl(method = "cv", 
+                              number = 5)
+train.control.CV10 <- trainControl(method = "cv", 
+                              number = 10)
+train.control.CV20 <- trainControl(method = "cv", 
+                              number = 20)
+train.control.CV40 <- trainControl(method = "cv", 
+                              number = 40)
+# Train the model
+
+model.CV5 <- train(DV ~., data=AcurracyExample, method = "lm",
+               trControl = train.control.CV5,
+               preProcess=c("center", "scale","nzv"))
+model.CV10 <- train(DV ~., data=AcurracyExample, method = "lm",
+               trControl = train.control.CV10,
+               preProcess=c("center", "scale","nzv"))
+model.CV20 <- train(DV ~., data=AcurracyExample, method = "lm",
+               trControl = train.control.CV20,
+               preProcess=c("center", "scale","nzv"))
+model.CV40 <- train(DV ~., data=AcurracyExample, method = "lm",
+               trControl = train.control.CV40,
+               preProcess=c("center", "scale","nzv"))
+```
+
+5-Fold Results
+```{r}
+kable(model.CV5$results, digits=4)
+```
+
+10-Fold Results
+```{r}
+kable(model.CV10$results, digits=4)
+```
+20-Fold Results
+```{r}
+kable(model.CV20$results, digits=4)
+```
+40-Fold Results
+```{r}
+kable(model.CV40$results, digits=4)
+```
+
+## $R^2$ on CV
+```{r}
+Kfold.Result.Plot<-tibble(CV=c(rep(5, 5),rep(10, 10),rep(20, 20),rep(40, 40)),
+                          RMSE = c(model.CV5$resample$RMSE,model.CV10$resample$RMSE,
+                                   model.CV20$resample$RMSE,model.CV40$resample$RMSE),
+                          R2 = c(model.CV5$resample$Rsquared,model.CV10$resample$Rsquared,
+                                 model.CV20$resample$Rsquared,model.CV40$resample$Rsquared)) 
+
+Kfold.Result.Plot %>%
+  ggplot(aes(x = reorder(CV,CV), y=R2, fill=as.factor(CV)))+
+  geom_boxplot()+
+  geom_point()+
+  xlab("K-Fold #")+ylab("R2")+
+  geom_hline(yintercept=summary(TrueModel)$r.squared, linetype="dashed", 
+                color = "red", size=1)+
+    stat_summary(fun=mean, geom="point", shape=20, size=5, color="blue", fill="blue") +
+  theme_bw()+
+  theme(legend.position = "none",
+        legend.title = element_blank())
+
+```
+
+So is something is wrong with 40 fold? Why did this break down and give crazy results. 
+
+Also, I noticed as well that the package is simply averaging $R^2$, which you technically you should not do. We can improve the accuracy if we covert them to Fisher Z and back again. You can see they give slightly different results. 
+
+```{r}
+Table.CT<-Kfold.Result.Plot %>% 
+  group_by(CV) %>% 
+  summarise(rawMeanR2=mean(R2), 
+            CorrectedR2=psych::fisherz2r(mean(psych::fisherz(R2^.5)))^2)
+kable(Table.CT)
+```
+
+## RMSE on CV
+
+```{r}
+Kfold.Result.Plot %>%
+  ggplot(aes(x = reorder(CV,CV), y=RMSE, fill=as.factor(CV)))+
+  geom_boxplot()+
+  geom_point()+
+  xlab("K-Fold #")+ylab("RMSE")+
+  geom_hline(yintercept=TRUE.RMSE, linetype="dashed", 
+                color = "red", size=2)+
+    stat_summary(fun=mean, geom="point", shape=20, size=5, color="blue", fill="blue") +
+  theme_bw()+
+  theme(legend.position = "none",
+        legend.title = element_blank())
+```
+
+# Repeated K-Fold CV
+We will do a 10-fold CV repeatedly (5,10,20,40).  We will see how many makes sense in smallish dataset. 
+
+```{r}
+set.seed(42)
+train.control.CVR5 <- trainControl(method = "repeatedcv",
+                              number = 10, repeats = 5)
+train.control.CVR10 <- trainControl(method = "repeatedcv",
+                              number = 10, repeats = 10)
+train.control.CVR20 <- trainControl(method = "repeatedcv",
+                              number = 10, repeats = 20)
+train.control.CVR40 <- trainControl(method = "repeatedcv",
+                              number = 10, repeats = 40)
+# Train the model
+model.R5 <- train(DV ~., data=AcurracyExample, method = "lm",
+               trControl = train.control.CVR5,
+               preProcess=c("center", "scale","nzv"))
+model.R10 <- train(DV ~., data=AcurracyExample, method = "lm",
+               trControl = train.control.CVR10,
+               preProcess=c("center", "scale","nzv"))
+model.R20 <- train(DV ~., data=AcurracyExample, method = "lm",
+               trControl = train.control.CVR20,
+               preProcess=c("center", "scale","nzv"))
+model.R40 <- train(DV ~., data=AcurracyExample, method = "lm",
+               trControl = train.control.CVR40,
+               preProcess=c("center", "scale","nzv"))
+```
+
+
+10-Fold Results, Repeated 5 times
+```{r}
+kable(model.R5$results, digits=4)
+```
+
+10-Fold Results, Repeated 10 times
+```{r}
+kable(model.R10$results, digits=4)
+```
+
+10-Fold Results, Repeated 20 times
+```{r}
+kable(model.R20$results, digits=4)
+```
+
+10-Fold Results, Repeated 40 times
+```{r}
+kable(model.R40$results, digits=4)
+```
+
+
+## $R^2$ Repeated K-Fold
+```{r}
+Kfold.Repeated.Result.Plot<-tibble(CV=c(rep(5, 5*10),rep(10, 10*10),rep(20, 20*10),rep(40, 40*10)),
+                          RMSE = c(model.R5$resample$RMSE,model.R10$resample$RMSE,
+                                   model.R20$resample$RMSE,model.R40$resample$RMSE),
+                          R2 = c(model.R5$resample$Rsquared,model.R10$resample$Rsquared,
+                                 model.R20$resample$Rsquared,model.R40$resample$Rsquared)) 
+
+Kfold.Repeated.Result.Plot %>%
+  ggplot(aes(x = reorder(CV,CV), y=R2, fill=as.factor(CV)))+
+  geom_boxplot()+
+  geom_point()+
+  xlab("10-Fold, Repeated #")+ylab("R2")+
+  geom_hline(yintercept=summary(TrueModel)$r.squared, linetype="dashed", 
+                color = "red", size=2)+
+  stat_summary(fun=mean, geom="point", shape=20, size=5, color="blue", fill="blue") +
+  theme_bw()+
+  theme(legend.position = "none",
+        legend.title = element_blank())
+
+```
+## RMSE Repeated K-Fold
+
+```{r}
+Kfold.Repeated.Result.Plot %>%
+  ggplot(aes(x = reorder(CV,CV), y=RMSE, fill=as.factor(CV)))+
+  geom_boxplot()+
+  geom_point()+
+   xlab("10-Fold, Repeated #")+ylab("RMSE")+
+  geom_hline(yintercept=TRUE.RMSE, linetype="dashed", 
+                color = "red", size=1)+
+    stat_summary(fun=mean, geom="point", shape=20, size=5, color="blue", fill="blue") +
+  theme_bw()+
+  theme(legend.position = "none",
+        legend.title = element_blank())
+```
+
+Lots of lots of repeated, so not make a big difference, but repeated K-Fold CV is probably better than just K-Fold, but picking the right number of folds is the most important. 
+
+
+# LOOCV
+
+```{r}
+set.seed(42)
+# Define training control
+train.control <- trainControl(method = "LOOCV")
+# Train the model
+model.LOOCV <- train(DV ~., data=AcurracyExample, method = "lm",
+               trControl = train.control,
+               preProcess=c("center", "scale","nzv"))
+# Summarize the results
+model.LOOCV
+```
+
+```{r}
+kable(model.LOOCV$results, digits=4)
+```
+
+
+# Bootstrapping
+The bootstrap will not create a training vs test set. Instead it will simply do sampling with replacement. 
+
+```{r}
+set.seed(42)
+# Define training control
+train.control.boot <- trainControl(method = "boot", n=2000)
+# Train the model
+model.boot <- train(DV ~., data=AcurracyExample, method = "lm",
+               trControl = train.control.boot,
+               preProcess=c("center", "scale","nzv"))
+# Summarize the results
+model.boot
+```
+
+```{r}
+kable(model.boot$results, digits=4)
+```
+
+Here is a histogram of the $R^2$ values
+
+```{r}
+hist(model.boot$resample$Rsquared)
+quantile(model.boot$resample$Rsquared, c(.05,.95))
+```
+
+# Conclusion
+
+Which should be pick?  Well it depends on our sample size. Here is simulation where use 3 methods (10-Fold, Repeated 10-Fold, and LOOCV) where we go from $N = 50$ to $N = 500$, by $50$. We will do Estimate metric - Actual Metric (from simulation). Postiive will be inflated and negative will mean deflated.
+
+![Simulation A](R2Plot.png)
+
+
+![Simulation B](RMSEplot.png)
+
+
+
+# References 
+
+```{r bib, include=FALSE}
+# create a bib file for the R packages used in this document
+knitr::write_bib(c('base', 'rmarkdown','dplyr','ggplot2','caret','splines'), file = 'skeleton.bib')
+```
